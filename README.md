@@ -1,7 +1,6 @@
-* Webapp to do a Bayesian update with continuously distributed prior and likelihood.
-* [https://bayes-continuous.herokuapp.com/](https://bayes-continuous.herokuapp.com/)
-* [Blog post](https://fragile-credences.github.io/bayes/) on some of the technical challenges
-involved in this project.
+* Do a Bayesian update where the prior PDF and the likelihood function are continuous. Currently supports 1 dimensional distributions. 
+* Web application for the library [tadamcz/bayes-continuous](https://github.com/tadamcz/bayes-continuous).
+* Deployed at [bayesupdate.com/](https://bayesupdate.com/)
 
 # Screenshot
-[![Alt text](/Capture.PNG "Optional title")](https://bayes-continuous.herokuapp.com/)
+[![Alt text](/Capture.PNG "Optional title")](https://bayesupdate.com/)
