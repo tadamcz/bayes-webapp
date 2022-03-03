@@ -1,17 +1,18 @@
-from flask import Flask, render_template
-from flask import request, jsonify, redirect
-from flask_wtf import FlaskForm
-from wtforms import StringField, DecimalField, FormField, BooleanField, SelectField
-from wtforms.validators import Regexp, NumberRange, EqualTo, DataRequired, InputRequired, Optional, Required
-from flask_executor import Executor
-
-import backend
-import random
 import decimal
 import json
-from scipy import stats
-import math
+import random
+
 import numpy as np
+from bayes_continuous.likelihood_func import NormalLikelihood, BinomialLikelihood
+from flask import Flask, render_template
+from flask import request, jsonify
+from flask_executor import Executor
+from flask_wtf import FlaskForm
+from scipy import stats
+from wtforms import StringField, DecimalField, FormField, BooleanField, SelectField
+from wtforms.validators import Optional
+
+import backend
 
 app = Flask(__name__)
 app.config['WTF_CSRF_ENABLED'] = False  # not needed, there are no user accounts
@@ -98,40 +99,34 @@ def label_form(form,i,family_list):
     return form
 
 class PriorForm(DistrFrom):
-    family = SelectField(choices=[('normal','Normal'), ('lognormal','Lognormal'), ('beta','Beta'), ('uniform','Uniform'),('diff_log_betas','log(Beta) - log(Beta)'),('ratio_betas','Beta/Beta')])
+    family = SelectField(
+        choices=[('normal', 'Normal'),
+                 ('lognormal', 'Lognormal'), ('beta', 'Beta'), ('uniform', 'Uniform')
+                 ])
     normal = FormField(TwoParamsForm)
     lognormal = FormField(TwoParamsForm)
     beta = FormField(TwoParamsForm)
     uniform = FormField(TwoParamsForm)
-    diff_log_betas = FormField(FourParamsForm)
-    ratio_betas = FormField(FourParamsForm)
     def __init__(self, *args, **kwargs):
         super(PriorForm, self).__init__(*args, **kwargs)
-        self = label_form(self,i=0,family_list=['normal','lognormal','beta','uniform','diff_log_betas', 'ratio_betas'])
+        self = label_form(self,i=0,family_list=['normal','lognormal','beta','uniform'])
 
 
 
 
 class LikelihoodForm(DistrFrom):
-    family = SelectField(choices=[('normal','Normal'), ('lognormal','Lognormal'), ('beta','Beta'), ('uniform','Uniform'),
-                                  ('binomial','Binomial (as a function of success probability)')])
+    family = SelectField(choices=[('normal', 'Normal'),
+                                  ('binomial', 'Binomial (as a function of success probability)')])
     normal = FormField(TwoParamsForm)
     normal_95_ci_bool = BooleanField("Use 95% interval mode?")
     normal_95_ci = FormField(TwoParamsForm)
-    lognormal = FormField(TwoParamsForm)
-    lognormal_95_ci_bool = BooleanField("Use 95% interval mode?")
-    lognormal_95_ci = FormField(TwoParamsForm)
-    beta = FormField(TwoParamsForm)
-    uniform = FormField(TwoParamsForm)
     binomial = FormField(TwoParamsForm)
 
     def __init__(self, *args, **kwargs):
         super(LikelihoodForm, self).__init__(*args, **kwargs)
-        self = label_form(self,i=1,family_list=['normal','lognormal','beta','uniform','binomial'])
+        self = label_form(self,i=1,family_list=['normal','binomial'])
         self.normal_95_ci.param1.label = '2.5%'
         self.normal_95_ci.param2.label = '97.5%'
-        self.lognormal_95_ci.param1.label = '2.5%'
-        self.lognormal_95_ci.param2.label = '97.5%'
 
 
 
@@ -174,10 +169,13 @@ def index():
             user_input_valid = True
 
     if user_input_given and user_input_valid:
-        posterior = backend.Posterior(user_input_parsed['prior'],user_input_parsed['likelihood'],user_input_parsed)
-        graph = posterior.graph_out()
+        # TODO: user_input_parsed needs to be refactored out
+        posterior = backend.Posterior(
+            prior_distribution=user_input_parsed['prior'],
+            likelihood_function=user_input_parsed['likelihood'])
+        graph = posterior.graph_out(user_input_parsed)
         thread_id_exact = str(random.randint(0, 10000))
-        executor.submit_stored(thread_id_exact, posterior.distribution_information_out)
+        executor.submit_stored(thread_id_exact, posterior.distribution_information_out, user_input_parsed)
 
         return render_template('index.html', form=form, graph=graph, thread_id_exact=thread_id_exact,
                                check_on_background_task=1, link_to_this=link_to_this_string)
@@ -210,6 +208,48 @@ def create_link_to_this_string(dictionary, convert_decimal_to_float=False):
     return '/?data=' + json.dumps(dictionary)
 
 
+def parse_prior(dictionary):
+    data = dictionary['prior']
+
+    if data['family'] == 'normal':
+        loc = data['normal']['param1']
+        scale = data['normal']['param2']
+        return stats.norm(loc=loc, scale=scale)
+
+    if data['family'] == 'lognormal':
+        mu = data['lognormal']['param1']
+        sigma = data['lognormal']['param2']
+
+        return stats.lognorm(scale=np.exp(mu), s=sigma)
+
+    if data['family'] == 'beta':
+        return stats.beta(data['beta']['param1'],
+                          data['beta']['param2'])
+
+    if data['family'] == 'uniform':
+        loc = data['uniform']['param1']
+        scale = data['uniform']['param2'] - loc
+        return stats.uniform(loc, scale)
+
+def parse_likelihood(dictionary):
+    data = dictionary['likelihood']
+
+    if data['family'] == 'normal':
+        if data['normal_95_ci_bool']:
+            x1, x2 = data['normal_95_ci']['param1'], data['normal_95_ci']['param2']
+            mu, sigma = backend.normal_parameters(x1, 2.5 / 100, x2, 97.5 / 100)
+        else:
+            mu = data['normal']['param1']
+            sigma = data['normal']['param2']
+        return NormalLikelihood(mu=mu,sigma=sigma)
+
+    if data['family'] == 'binomial':
+        successes = data['binomial']['param1']
+        failures = data['binomial']['param2']
+        trials = successes + failures
+        return BinomialLikelihood(successes=successes, trials=trials)
+
+
 def parse_user_inputs(dictionary):
     def recursively_convert_Decimal_to_float(dictionary):
         for key in dictionary:
@@ -221,69 +261,9 @@ def parse_user_inputs(dictionary):
     recursively_convert_Decimal_to_float(dictionary)
     # print("User input:", json.dumps(dictionary, indent=4))
 
-    def parse_prior_likelihood(dictionary, p_or_l):
-        if dictionary[p_or_l]['family'] == 'normal':
-            if p_or_l == 'likelihood' and dictionary['likelihood']['normal_95_ci_bool']:
-                x1, x2 = dictionary['likelihood']['normal_95_ci']['param1'],dictionary['likelihood']['normal_95_ci']['param2']
-                loc,scale = backend.normal_parameters(x1,2.5/100,x2,97.5/100)
-            else:
-                loc = dictionary[p_or_l]['normal']['param1']
-                scale = dictionary[p_or_l]['normal']['param2']
 
-            scipy_distribution_object = stats.norm(loc=loc, scale=scale)
-
-        if dictionary[p_or_l]['family'] == 'lognormal':
-            if p_or_l == 'likelihood' and dictionary['likelihood']['lognormal_95_ci_bool']:
-                x1, x2 = dictionary['likelihood']['lognormal_95_ci']['param1'],dictionary['likelihood']['lognormal_95_ci']['param2']
-                x1, x2 = np.log(x1), np.log(x2)
-                mu, sigma = backend.normal_parameters(x1,2.5/100,x2,97.5/100)
-            else:
-                mu = dictionary[p_or_l]['lognormal']['param1']
-                sigma = dictionary[p_or_l]['lognormal']['param2']
-
-            scipy_distribution_object = stats.lognorm(scale=np.exp(mu), s=sigma)
-
-        if dictionary[p_or_l]['family'] == 'beta':
-            scipy_distribution_object = stats.beta(dictionary[p_or_l]['beta']['param1'],
-                                                   dictionary[p_or_l]['beta']['param2'])
-
-        if dictionary[p_or_l]['family'] == 'uniform':
-            loc = dictionary[p_or_l]['uniform']['param1']
-            scale = dictionary[p_or_l]['uniform']['param2'] - loc
-            scipy_distribution_object = stats.uniform(loc, scale)
-
-        if dictionary[p_or_l]['family'] == 'binomial':
-            successes = dictionary[p_or_l]['binomial']['param1']
-            failures = dictionary[p_or_l]['binomial']['param2']
-            trials = successes+failures
-            binomial_pdf = lambda theta: stats.binom.pmf(successes,trials,theta)
-            scipy_distribution_object = backend.CustomFromPDF(binomial_pdf,a=0,b=1)
-
-        if dictionary[p_or_l]['family'] == 'diff_log_betas':
-            a1 = dictionary[p_or_l]['diff_log_betas']['param1']
-            b1 = dictionary[p_or_l]['diff_log_betas']['param2']
-            a2 = dictionary[p_or_l]['diff_log_betas']['param3']
-            b2 = dictionary[p_or_l]['diff_log_betas']['param4']
-
-            scipy_distribution_object = backend.DiffLogBetas(a1, b1, a2, b2)
-
-        if dictionary[p_or_l]['family'] == 'ratio_betas':
-            a1 = dictionary[p_or_l]['ratio_betas']['param1']
-            b1 = dictionary[p_or_l]['ratio_betas']['param2']
-            a2 = dictionary[p_or_l]['ratio_betas']['param3']
-            b2 = dictionary[p_or_l]['ratio_betas']['param4']
-
-            scipy_distribution_object = backend.RatioBetas(a1, b1, a2, b2)
-
-        if dictionary[p_or_l]['family'] == 'ratio_betas':
-            scipy_distribution_object.use_log_transform = True
-        else:
-            scipy_distribution_object.use_log_transform = False
-
-        return scipy_distribution_object
-
-    prior = parse_prior_likelihood(dictionary, 'prior')
-    likelihood = parse_prior_likelihood(dictionary, 'likelihood')
+    prior = parse_prior(dictionary)
+    likelihood = parse_likelihood(dictionary)
 
     override_graph_range = False
     if dictionary['graphrange']['param1'] is not None and dictionary['graphrange']['param2'] is not None:
