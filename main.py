@@ -12,7 +12,8 @@ from scipy import stats
 from wtforms import StringField, DecimalField, FormField, BooleanField, SelectField
 from wtforms.validators import Optional
 
-import backend
+import bayes
+from bayes_continuous import utils
 
 app = Flask(__name__)
 app.config['WTF_CSRF_ENABLED'] = False  # not needed, there are no user accounts
@@ -169,8 +170,7 @@ def index():
             user_input_valid = True
 
     if user_input_given and user_input_valid:
-        # TODO: user_input_parsed needs to be refactored out
-        posterior = backend.Posterior(
+        posterior = bayes.Posterior(
             prior_distribution=user_input_parsed['prior'],
             likelihood_function=user_input_parsed['likelihood'])
         graph = posterior.graph_out(user_input_parsed)
@@ -237,7 +237,7 @@ def parse_likelihood(dictionary):
     if data['family'] == 'normal':
         if data['normal_95_ci_bool']:
             x1, x2 = data['normal_95_ci']['param1'], data['normal_95_ci']['param2']
-            mu, sigma = backend.normal_parameters(x1, 2.5 / 100, x2, 97.5 / 100)
+            mu, sigma = utils.normal_parameters(x1, 2.5 / 100, x2, 97.5 / 100)
         else:
             mu = data['normal']['param1']
             sigma = data['normal']['param2']

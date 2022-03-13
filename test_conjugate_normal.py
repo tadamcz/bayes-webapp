@@ -1,5 +1,5 @@
 import pytest
-import backend
+import bayes
 from scipy import stats
 import math
 
