@@ -6,4 +6,7 @@
 [![Alt text](Capture.PNG "Optional title")](https://bayesupdate.com/)
 
 # Development
-* The use of a pip ["editable" install](https://pip.pypa.io/en/stable/cli/pip_install/#editable-installs) for the package `bayes_continuous` might confuse your IDE's index into thinking the files under that package don't exist. In PyCharm, I've found that `File -> Invalidate Caches` fixes the issue.
+[tadamcz/bayes-continuous](https://github.com/tadamcz/bayes-continuous) is used as a git submodule (see `.gitmodules`). You'll need to initialized and update that submodule. It's easiest to do this initially by passing `--recurse-submodules` to the `git clone` command. 
+
+# Deployment
+Uses Dokku. Dokku expects the file `.buildpacks`.
