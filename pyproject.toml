@@ -1,0 +1,35 @@
+[tool.poetry]
+name = "bayes-webapp"
+version = "0.0.0"
+description = ""
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "3.9.18"
+bayes-continuous = {path = "bayes_continuous"}
+click = "^8.1.3"
+cycler = "^0.11.0"
+Flask = "^2.2.2"
+Flask-Executor = "^1.0.0"
+Flask-WTF = "^1.0.1"
+gunicorn = "^20.1.0"
+itsdangerous = "^2.1.2"
+Jinja2 = "^3.1.2"
+kiwisolver = "^1.4.4"
+MarkupSafe = "^2.1.1"
+matplotlib = "^3.5.3"
+mpld3 = "^0.5.8"
+numpy = "^1.23.3"
+pyparsing = "^3.0.9"
+python-dateutil = "^2.8.2"
+scipy = "*"
+six = "^1.16.0"
+sortedcontainers = "^2.4.0"
+Werkzeug = "^2.2.2"
+WTForms = "^3.0.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
